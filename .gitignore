@@ -1,0 +1,28 @@
+# IDE
+.idea/
+.vscode/
+
+# CMake build folders
+cmake-build-debug/
+cmake-build-release/
+
+# Build files
+# CMakeLists.txt
+*.o
+*.obj
+*.exe
+*.out
+
+# System files
+.DS_Store
+Thumbs.db
+
+# 
+build/
+build_tests/
+HMI2_1 — v1 копия до введения тестов/
+HMI2_1 — v2 копия частичные тесты/
+HMI2_1 — v3 копия до нового симейк/
+HMI2_vscode/
+HMI2_1/
+
