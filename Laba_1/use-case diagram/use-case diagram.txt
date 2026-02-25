@@ -1,0 +1,21 @@
+@startuml
+:Пользователь: as User
+
+
+
+package "Робот для коворка" {
+  (Вызвать робота) as obj1
+  (Подехать к пользователю) as obj2
+  (Принять кружку) as obj3
+  (Поехать к дозатору) as obj4
+  (Ожидать наполнение) as obj5
+  (Вернутся к пользователю) as obj6
+}
+
+User --> obj1
+obj1 --> obj2
+obj2 --> obj3
+obj3 --> obj4
+obj4 --> obj5
+obj5 --> obj6
+@enduml
