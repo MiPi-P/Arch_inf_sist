@@ -1,0 +1,15 @@
+@startuml
+
+actor User
+participant Robot
+participant Controller
+participant Motor
+
+User - Robot  сигнал вызова
+Robot - Controller  обработать сигнал
+Controller - Motor  запустить движение
+Motor - Robot  движение к пользователю
+
+Robot - User  робот прибыл
+
+@enduml
