@@ -4,5 +4,7 @@
 class AReceiver
 {
 public:
-    virtual std::string receive() = 0;
+    virtual std::string receive() {
+
+    }
 };

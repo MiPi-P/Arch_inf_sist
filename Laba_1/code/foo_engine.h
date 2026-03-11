@@ -5,23 +5,19 @@
 class FooEngine : public AEngine
 {
 public:
-    void forward(int time) override
-    {
+    void forward(int time) override {
         std::cout << "Forward " << time << std::endl;
     }
 
-    void left(int time) override
-    {
+    void left(int time) override {
         std::cout << "Left " << time << std::endl;
     }
 
-    void right(int time) override
-    {
+    void right(int time) override {
         std::cout << "Right " << time << std::endl;
     }
 
-    void stop() override
-    {
+    void stop() override {
         std::cout << "Stop" << std::endl;
     }
 };

@@ -2,8 +2,7 @@
 #include "foo_receiver.h"
 #include "foo_engine.h"
 
-int main()
-{
+int main() {
     FooReceiver receiver;
     FooEngine engine;
 

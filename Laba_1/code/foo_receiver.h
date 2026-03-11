@@ -6,8 +6,7 @@
 class FooReceiver : public AReceiver
 {
 public:
-    std::string receive() override
-    {
+    std::string receive() override {
         std::string cmd;
         std::getline(std::cin, cmd);
         return cmd;
