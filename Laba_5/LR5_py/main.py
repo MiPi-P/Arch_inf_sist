@@ -121,43 +121,99 @@ if not cam.isOpened():
 last_send_time = 0
 i = 1
 
+# ===== ПАРАМЕТРЫ РОБОТА =====
+WHEEL_DIAMETER = 6.0  # см
+WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER  # ~18.84 см
+
+CM_PER_SEC = 30.0  # примерная скорость (подгони!)
+TURN_TIME_PER_DEGREE = 0.006  # сек на 1 градус (подгони!)
+
+# ===== СОСТОЯНИЯ =====
+STATE_FIND = 0
+STATE_ROTATE = 1
+STATE_FORWARD = 2
+
+state = STATE_FIND
+action_end_time = 0
+
+# запоминаем текущие команды
+current_left = 0
+current_right = 0
+current_forward = 0
+
 while True:
     # ret, frame = cam.read() # кадр с камеры
-    # if i > 4:
-    #     i = 1
-    #
-    # photo = 'Photo_' + str(i) + '.png'
-    # i += 1
 
-    frame = cv2.imread('Photo_4.png', 255)
-    # frame = cv2.imread(photo, 255)
+    frame = cv2.imread('Photo_2.png', 255)# фото
 
     retval, data, bbox = decode_qr_code_cv2(frame)
 
-    if retval is not None and bbox is not None and data is not None:
-        center = data_to_center(bbox, data)
-        drawing(frame, bbox)  # рисуем
-        length_line_cm, turn = search_trajectory(frame, center, bbox)
+    now = time.time()
 
-        if length_line_cm is not None:
-            print('Длина в см:', int(length_line_cm), 'Поворот:', turn)
+    # ================= СОСТОЯНИЕ: ПОИСК =================
+    if state == STATE_FIND:
+
+        if retval is not None and bbox is not None and data is not None:
+            center = data_to_center(bbox, data)
+            drawing(frame, bbox)
+            length_line_cm, turn = search_trajectory(frame, center, bbox)
+
+            if length_line_cm is not None:
+                print('Длина в см:', int(length_line_cm), 'Поворот:', turn)
+
+                # === РАСЧЁТ ВРЕМЕНИ ===
+                turn_time = abs(turn) * TURN_TIME_PER_DEGREE
+
+                current_left = 0
+                current_right = 0
+
+                if abs(turn) > 5:
+                    if turn > 0:
+                        current_left = turn_time
+                    else:
+                        current_right = turn_time
+
+                # === ОТПРАВКА ПОВОРОТА ===
+                send_data = {
+                    'left_time': round(current_left, 3),
+                    'right_time': round(current_right, 3),
+                    'forward_time': 0
+                }
+
+                sndpost(send_data)
+
+                action_end_time = now + turn_time
+                state = STATE_ROTATE
+
+    # ================= СОСТОЯНИЕ: ПОВОРОТ =================
+    elif state == STATE_ROTATE:
+        if now >= action_end_time:
+            print('Поворот завершён')
+
+            # после поворота едем вперёд 2 секунды
+            current_forward = 2.0
 
             send_data = {
-                'command': 'move',
-                'angle': float(turn),
-                'distance': float(round(length_line_cm, 2))
+                'left_time': 0,
+                'right_time': 0,
+                'forward_time': current_forward
             }
 
-            now = time.time()
-            if now - last_send_time > 1.0:
-                sndpost(send_data)
-                last_send_time = now
+            sndpost(send_data)
 
-    # else:
-        # print('Qr: Не распознано')
+            action_end_time = now + current_forward
+            state = STATE_FORWARD
 
-    cv2.imshow('frame', frame)  # показываем
-    if cv2.waitKey(1) & 0xFF == ord('q'): # по q выход
+    # ================= СОСТОЯНИЕ: ДВИЖЕНИЕ =================
+    elif state == STATE_FORWARD:
+        if now >= action_end_time:
+            print('Движение завершено → новая корректировка')
+            state = STATE_FIND
+
+    # ================= ОТРИСОВКА =================
+    cv2.imshow('frame', frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cam.release()
