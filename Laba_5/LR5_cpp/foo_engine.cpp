@@ -1,5 +1,6 @@
 #include "foo_engine.h"
 #include <iostream>
+#include <cstdint>
 
 #ifdef __linux__
 
