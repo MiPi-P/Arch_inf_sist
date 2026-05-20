@@ -1,6 +1,4 @@
 #include <iostream>
-#include <thread>
-#include <chrono>
 #include "httplib.h"
 #include "nlohmann/json.hpp"
 #include "foo_engine.h"
@@ -9,7 +7,9 @@ using json = nlohmann::json;
 
 int main()
 {
+#ifdef _WIN32
     system("chcp 65001");
+#endif
 
     FooEngine engine;
     httplib::Server svr;
@@ -20,7 +20,6 @@ int main()
     });
 
     svr.Post("/commands", [&engine](const httplib::Request& req, httplib::Response& res) {
-
         std::string request_body = req.body;
 
         std::cout << "\nPOST /commands received" << std::endl;
@@ -43,26 +42,22 @@ int main()
             std::cout << "right_time = " << right_time << std::endl;
             std::cout << "forward_time = " << forward_time << std::endl;
 
-            // ===== ПОВОРОТ =====
             if (left_time > 0.0f) {
-                std::cout << "TURN RIGHT (left motor)" << std::endl;
+                std::cout << "TURN LEFT" << std::endl;
                 engine.left(left_time);
-                std::this_thread::sleep_for(std::chrono::milliseconds((int)(left_time * 1000)));
-                engine.stop();
             }
 
             if (right_time > 0.0f) {
-                std::cout << "TURN LEFT (right motor)" << std::endl;
+                std::cout << "TURN RIGHT" << std::endl;
                 engine.right(right_time);
-                std::this_thread::sleep_for(std::chrono::milliseconds((int)(right_time * 1000)));
-                engine.stop();
             }
 
-            // ===== ДВИЖЕНИЕ ВПЕРЁД =====
             if (forward_time > 0.0f) {
                 std::cout << "MOVE FORWARD" << std::endl;
                 engine.forward(forward_time);
-                std::this_thread::sleep_for(std::chrono::milliseconds((int)(forward_time * 1000)));
+            }
+
+            if (left_time <= 0.0f && right_time <= 0.0f && forward_time <= 0.0f) {
                 engine.stop();
             }
 
