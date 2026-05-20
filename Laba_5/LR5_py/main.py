@@ -1,7 +1,4 @@
 # диаметр колема 6 см
-
-
-
 import numpy as np
 import cv2
 import math
@@ -9,7 +6,7 @@ import requests
 import json
 import time
 
-url = 'http://localhost:8080/commands'
+url = 'http://192.168.1.101:8080/commands'
 
 
 def sndpost(data):
@@ -45,6 +42,11 @@ def search_centers(points):
 def data_to_center(bbox, data):
     center = dict()
     for points, qr_data in zip(bbox, data):
+        qr_data = qr_data.strip() # убираем пробелы до и после текста QR
+
+        if qr_data == '':
+            continue
+
         center[qr_data] = search_centers(points) # () здесь кортеж что бы не изменить случайно координаты
     return center
 
@@ -68,16 +70,23 @@ def search_trajectory(frame, center, bbox):
     side = ((points[1][0] - points[0][0]) ** 2 + (points[1][1] - points[0][1]) ** 2) ** 0.5
     k = cm / side # длина 1 стороны квадрата '1'
 
-    if len(center) == 3 and center.get('1') is not None \
-            and center.get('2') is not None and center.get('bottom') is not None:
+    if center.get('robotA') is not None \
+            and center.get('robotB') is not None \
+            and center.get('coffee') is not None:
 
-        x_car1 = center.get('1')[0]
-        y_car1 = center.get('1')[1]
-        x_car2 = center.get('2')[0]
-        y_car2 = center.get('2')[1]
-        x_baze = center.get('bottom')[0]
-        y_baze = center.get('bottom')[1]
+        # robotA — перед робота
+        x_car1 = center.get('robotA')[0]
+        y_car1 = center.get('robotA')[1]
+
+        # robotB — зад робота
+        x_car2 = center.get('robotB')[0]
+        y_car2 = center.get('robotB')[1]
+
+        # coffee — база / цель
+        x_baze = center.get('coffee')[0]
+        y_baze = center.get('coffee')[1]
     else:
+        print('Нужны QR: robotA, robotB, coffee. Сейчас найдено:', center.keys())
         return None, None
 
     x_car_center = (x_car1 + x_car2) // 2
@@ -92,8 +101,9 @@ def search_trajectory(frame, center, bbox):
     angle_line = math.degrees(math.atan2(dy_base, dx_base)) # угол линии и Ox (в градусах)
 
     # угол поворота машины
-    dx_car = x_car2 - x_car1
-    dy_car = y_car2 - y_car1
+    # robotA — перед, robotB — зад, поэтому направление робота: robotB -> robotA
+    dx_car = x_car1 - x_car2
+    dy_car = y_car1 - y_car2
 
     angle_car = math.degrees(math.atan2(dy_car, dx_car)) # угол наклона машины
 
@@ -118,15 +128,14 @@ if not cam.isOpened():
     print('Не открылась камера')
     exit()
 
-last_send_time = 0
-i = 1
-
 # ===== ПАРАМЕТРЫ РОБОТА =====
 WHEEL_DIAMETER = 6.0  # см
 WHEEL_CIRCUMFERENCE = math.pi * WHEEL_DIAMETER  # ~18.84 см
 
 CM_PER_SEC = 30.0  # примерная скорость (подгони!)
-TURN_TIME_PER_DEGREE = 0.006  # сек на 1 градус (подгони!)
+TURN_TIME = 0.2
+MIN_TURN_ANGLE = 20
+MIN_DISTANCE_CM = 8
 
 # ===== СОСТОЯНИЯ =====
 STATE_FIND = 0
@@ -136,73 +145,84 @@ STATE_FORWARD = 2
 state = STATE_FIND
 action_end_time = 0
 
-# запоминаем текущие команды
-current_left = 0
-current_right = 0
-current_forward = 0
-
 while True:
-    # ret, frame = cam.read() # кадр с камеры
+    ret, frame = cam.read() # кадр с камеры
 
-    frame = cv2.imread('Photo_2.png', 255)# фото
+    if not ret:
+        print('Не удалось получить кадр')
+        break
+
+    # frame = cv2.imread('Photo_2.png', 255)# фото
 
     retval, data, bbox = decode_qr_code_cv2(frame)
-
     now = time.time()
 
-    # ================= СОСТОЯНИЕ: ПОИСК =================
-    if state == STATE_FIND:
+    if retval is not None and bbox is not None and data is not None:
+        center = data_to_center(bbox, data)
+        drawing(frame, bbox)
 
-        if retval is not None and bbox is not None and data is not None:
-            center = data_to_center(bbox, data)
-            drawing(frame, bbox)
+        if state == STATE_FIND:
+            print('Найдены QR:', center.keys())
+
             length_line_cm, turn = search_trajectory(frame, center, bbox)
 
             if length_line_cm is not None:
                 print('Длина в см:', int(length_line_cm), 'Поворот:', turn)
 
-                # === РАСЧЁТ ВРЕМЕНИ ===
-                turn_time = abs(turn) * TURN_TIME_PER_DEGREE
-
-                current_left = 0
-                current_right = 0
-
-                if abs(turn) > 5:
+                if abs(turn) >= MIN_TURN_ANGLE:
                     if turn > 0:
-                        current_left = turn_time
+                        send_data = {
+                            'left_time': TURN_TIME,
+                            'right_time': 0,
+                            'forward_time': 0
+                        }
                     else:
-                        current_right = turn_time
+                        send_data = {
+                            'left_time': 0,
+                            'right_time': TURN_TIME,
+                            'forward_time': 0
+                        }
 
-                # === ОТПРАВКА ПОВОРОТА ===
-                send_data = {
-                    'left_time': round(current_left, 3),
-                    'right_time': round(current_right, 3),
-                    'forward_time': 0
-                }
+                    print('Поворачиваем, пока угол не станет меньше 20°:', send_data)
+                    sndpost(send_data)
 
-                sndpost(send_data)
+                    action_end_time = now + TURN_TIME
+                    state = STATE_ROTATE
 
-                action_end_time = now + turn_time
-                state = STATE_ROTATE
+                else:
+                    print('Угол меньше 20°, едем вперёд на нужное расстояние')
+
+                    if length_line_cm <= MIN_DISTANCE_CM:
+                        print('Робот уже рядом с базой, движение не нужно')
+                        send_data = {
+                            'left_time': 0,
+                            'right_time': 0,
+                            'forward_time': 0
+                        }
+                    else:
+                        forward_time = length_line_cm / CM_PER_SEC
+
+                        # ограничение, чтобы не ехал слишком долго за один раз
+                        if forward_time > 1.5:
+                            forward_time = 1.5
+
+                        send_data = {
+                            'left_time': 0,
+                            'right_time': 0,
+                            'forward_time': round(forward_time, 3)
+                        }
+
+                    print('Едем вперёд:', send_data)
+                    sndpost(send_data)
+
+                    action_end_time = now + send_data['forward_time']
+                    state = STATE_FORWARD
 
     # ================= СОСТОЯНИЕ: ПОВОРОТ =================
-    elif state == STATE_ROTATE:
+    if state == STATE_ROTATE:
         if now >= action_end_time:
-            print('Поворот завершён')
-
-            # после поворота едем вперёд 2 секунды
-            current_forward = 2.0
-
-            send_data = {
-                'left_time': 0,
-                'right_time': 0,
-                'forward_time': current_forward
-            }
-
-            sndpost(send_data)
-
-            action_end_time = now + current_forward
-            state = STATE_FORWARD
+            print('Поворот завершён → снова сверяемся по камере')
+            state = STATE_FIND
 
     # ================= СОСТОЯНИЕ: ДВИЖЕНИЕ =================
     elif state == STATE_FORWARD:
@@ -223,6 +243,6 @@ cv2.destroyAllWindows()
 # img = cv2.imread('Photo_test.png', 0)
 #
 # cv2.circle(img, (50, 50), 25, (0, 255, 0), 3) # Рисование
-# cv2.imshow('img', img)
+# cv2.imshow('img')
 # cv2.waitKey(10000)
 # cv2.destroyAllWindows()
